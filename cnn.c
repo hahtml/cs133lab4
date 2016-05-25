@@ -45,7 +45,7 @@ void parallel_CONV(float Cout[NUM][IMROW][IMROW], float Cin[NUM][INIMROW][INIMRO
 
     // Retrieve the number of platforms
     cl_uint numPlatforms = 0;
-    status = clGetPlatformIDs(0, NULL, &numPlatforms);
+    status |= clGetPlatformIDs(0, NULL, &numPlatforms);
 
     // Allocate enough space for each platform
     cl_platform_id *platforms = NULL;
@@ -53,7 +53,7 @@ void parallel_CONV(float Cout[NUM][IMROW][IMROW], float Cin[NUM][INIMROW][INIMRO
         numPlatforms*sizeof(cl_platform_id));
 
     // Fill in the platforms
-    status = clGetPlatformIDs(numPlatforms, platforms, NULL);
+    status |= clGetPlatformIDs(numPlatforms, platforms, NULL);
 
 	// Find GPU
 	int platform_index = -1;
@@ -80,7 +80,7 @@ void parallel_CONV(float Cout[NUM][IMROW][IMROW], float Cin[NUM][INIMROW][INIMRO
 
   	// Retrieve the number of devices
     cl_uint numDevices = 0;
-    status = clGetDeviceIDs(platforms[platform_index], CL_DEVICE_TYPE_GPU, 0, 
+    status |= clGetDeviceIDs(platforms[platform_index], CL_DEVICE_TYPE_GPU, 0, 
         NULL, &numDevices);
 
 	printf("#devices: %d, status %d\n", numDevices, status);
@@ -90,8 +90,9 @@ void parallel_CONV(float Cout[NUM][IMROW][IMROW], float Cin[NUM][INIMROW][INIMRO
         numDevices*sizeof(cl_device_id));
 
     // Fill in the devices 
-    status = clGetDeviceIDs(platforms[platform_index], CL_DEVICE_TYPE_GPU,        
+    status |= clGetDeviceIDs(platforms[platform_index], CL_DEVICE_TYPE_GPU,        
         numDevices, devices, NULL);
+    printf("get devices id%d\n", status);
 
     for(int i=0; i<numDevices; i++){
     	printf("devices: %d\n", devices[i]);
@@ -99,25 +100,23 @@ void parallel_CONV(float Cout[NUM][IMROW][IMROW], float Cin[NUM][INIMROW][INIMRO
 
     // Create a context and associate it with the devices
     cl_context context;
-    context = clCreateContext(NULL, numDevices, devices, NULL, 
+    context = clCreateContext(NULL, 1, &devices[0], NULL, 
         NULL, &status);
+    printf("context: %d\n", status);
 
     // Create a command queue and associate it with the device
     // cl_command_queue cmdQueue;
     // cmdQueue = clCreateCommandQueue(context, devices[0], 0, 
     //     &status);    
-    cl_command_queue *cmdQueue;
-    cmdQueue = (cl_command_queue*)malloc(numDevices*sizof(cl_command_queue));
-    for(int i=0; i<numDevices; i++){
-        cmdQueue[i] = clCreateCommandQueue(context, devices[i], 0, &status);
-    } 
-
+    cl_command_queue cmdQueue = clCreateCommandQueue(context, devices[0], 0, &status);
+    printf("command queue: %d\n", status);
     // Create a buffer object that will contain the data 
     // from the host array Cin
     cl_mem bufCin;
     int Cin_size = NUM * INIMROW * INIMROW * size_float;
     bufCin = clCreateBuffer(context, CL_MEM_READ_ONLY, Cin_size,
     	NULL, &status);
+    printf("bufCin: %d\n", status);
 
     // Create a buffer object that will contain the data 
     // from the host array weight
@@ -125,6 +124,7 @@ void parallel_CONV(float Cout[NUM][IMROW][IMROW], float Cin[NUM][INIMROW][INIMRO
     int Weight_size = NUM * NUM * KERNEL * KERNEL * size_float;
     bufWeight = clCreateBuffer(context, CL_MEM_READ_ONLY, Weight_size,                        
         NULL, &status);
+    printf("bufWeight: %d\n", status);
 
     // Create a buffer object that will contain the data 
     // from the host array bias
@@ -132,18 +132,20 @@ void parallel_CONV(float Cout[NUM][IMROW][IMROW], float Cin[NUM][INIMROW][INIMRO
     int Bias_size = NUM * size_float;
     bufBias = clCreateBuffer(context, CL_MEM_READ_ONLY, Bias_size,                        
         NULL, &status);
+    printf("bufBias: %d\n", status);
 
     // Create a buffer object that will hold the output data Cout
     cl_mem bufCout;
     int Cout_size = NUM * IMROW * IMROW * size_float;
     bufCout = clCreateBuffer(context, CL_MEM_WRITE_ONLY, Cout_size,
         NULL, &status);
+    printf("bufCout: %d\n", status);
 
 
 	// Write input array Cin to the device buffer bufCin
     for(int i=0; i<NUM; i++){
     	for(int j=0; j<INIMROW; j++){
-			status = clEnqueueWriteBuffer(cmdQueue, bufCin, CL_FALSE, 
+			status |= clEnqueueWriteBuffer(cmdQueue, bufCin, CL_FALSE, 
 			    (i*INIMROW*INIMROW+j*INIMROW)*size_float, INIMROW*size_float, &(Cin[i][j][0]), 0, NULL, NULL);    			
     	} 
     }
@@ -152,7 +154,7 @@ void parallel_CONV(float Cout[NUM][IMROW][IMROW], float Cin[NUM][INIMROW][INIMRO
     for(int i=0; i<NUM; i++){
     	for(int j=0; j<NUM; j++){
     		for(int k=0; k<KERNEL; k++){
-				status = clEnqueueWriteBuffer(cmdQueue, bufWeight, CL_FALSE, 
+				status |= clEnqueueWriteBuffer(cmdQueue, bufWeight, CL_FALSE, 
 			    	(i*NUM*KERNEL*KERNEL+j*KERNEL*KERNEL+k*KERNEL)*size_float, KERNEL*size_float, 
 			    	&(weight[i][j][k][0]), 0, NULL, NULL);    			
     		}
@@ -160,28 +162,32 @@ void parallel_CONV(float Cout[NUM][IMROW][IMROW], float Cin[NUM][INIMROW][INIMRO
     }
 
     // Write input array bias to the device buffer bufBias
-    status = clEnqueueWriteBuffer(cmdQueue, bufBias, CL_FALSE, 
+    status |= clEnqueueWriteBuffer(cmdQueue, bufBias, CL_FALSE, 
         0, NUM*size_float, bias, 0, NULL, NULL);
-
+    printf("write buf: %d\n", status);
 
 
     // Create a program with source code
     cl_program program = clCreateProgramWithSource(context, 1, 
-        (const char**)&kernel_cl, NULL, &status);    
+        (const char**)&kernel_cl, NULL, &status);
+    printf("program: %d\n", status);    
 
     // Build (compile) the program for the device
-    status = clBuildProgram(program, numDevices, devices, 
+    status |= clBuildProgram(program, 1, &devices[0], 
         NULL, NULL, NULL);
+    printf("build program: %d\n", status);
 
     // Create the vector addition kernel
     cl_kernel kernel;
     kernel = clCreateKernel(program, "CONV", &status);
+    printf("Create kernel: %d\n", status);
 
     // Associate the input and output buffers with the kernel
-    status = clSetKernelArg(kernel, 0, sizeof(cl_mem), &bufCout); 
-    status = clSetKernelArg(kernel, 1, sizeof(cl_mem), &bufCin);
-    status = clSetKernelArg(kernel, 2, sizeof(cl_mem), &bufWeight);
-    status = clSetKernelArg(kernel, 3, sizeof(cl_mem), &bufBias);
+    status |= clSetKernelArg(kernel, 0, sizeof(cl_mem), &bufCout); 
+    status |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &bufCin);
+    status |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &bufWeight);
+    status |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &bufBias);
+    printf("kernel arg: %d\n", status);
 
    	// Define an index space (global work size) of work 
     // items for execution. A workgroup size (local work size) 
@@ -189,14 +195,20 @@ void parallel_CONV(float Cout[NUM][IMROW][IMROW], float Cin[NUM][INIMROW][INIMRO
     size_t globalWorkSize[1];
     size_t localWorkSize[1];
 
+    // // There are 32 * 512 work-items
+    // globalWorkSize[0] = 512*224*224;
+    // // There are work-groups
+    // localWorkSize[0] = 224*224;
+
     // There are 32 * 512 work-items
-    globalWorkSize[0] = 32 * 512;
+    globalWorkSize[0] = 512*224;
     // There are work-groups
-    localWorkSize[0] = 512;
+    localWorkSize[0] = 224;
 
     // Execute the kernel for execution
     status = clEnqueueNDRangeKernel(cmdQueue, kernel, 1, NULL, 
         globalWorkSize, localWorkSize, 0, NULL, NULL);
+    printf("kernel execution: %d\n", status);
 
     // Read the device output buffer to the host output array
     for(int i=0; i<NUM; i++){
@@ -208,18 +220,18 @@ void parallel_CONV(float Cout[NUM][IMROW][IMROW], float Cin[NUM][INIMROW][INIMRO
     // clEnqueueReadBuffer(cmdQueue, bufCout, CL_TRUE, 0, NUM*IMROW*IMROW, Cout, 0, NULL, NULL);
 
     // Free OpenCL resources
-    clReleaseKernel(kernel);
-    clReleaseProgram(program);
-    clReleaseMemObject(bufCout);
-    clReleaseMemObject(bufCin);
-    clReleaseMemObject(bufWeight);
-    clReleaseMemObject(bufBias);
-    clReleaseContext(context);
+    // clReleaseKernel(kernel);
+    // clReleaseProgram(program);
+    // clReleaseMemObject(bufCout);
+    // clReleaseMemObject(bufCin);
+    // clReleaseMemObject(bufWeight);
+    // clReleaseMemObject(bufBias);
+    // clReleaseCommandQueue(cmdQueue);
+    // clReleaseContext(context);
 
-    // Free host resources
-    free(platforms);
-    free(devices);
-    free(cmdQueue);
+    // // Free host resources
+    // free(platforms);
+    // free(devices);
 
     return;
 }

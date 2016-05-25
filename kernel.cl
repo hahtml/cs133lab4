@@ -36,57 +36,64 @@ void CONV(
 
   int gid = get_global_id(0);
   int lid = get_local_id(0);
-  // int tnum = get_global_size(0);
+  int tnum = get_global_size(0);
+  int lnum = get_local_size(0);
 
-  // int start = gid * (512 / tnum);
-  // int end = start + (512 / tnum);
-
-  // for (int i = gid; i < end; i++) {
-  //   for (int h = 0; h < 224; h++) {
-  //     for (int w = 0; w < 224; w++) {
-  //       Cout[i * (224 * 224) + h * 224 + w] = bias[i];
-  //     }
-  //   }
-  // }
-  int i = gid/32;
-  int h = lid;
-  int tmp1 = i * (224 * 224) + h * 224;
-  for (int w = 0; w < 224; w++) {
-    Cout[tmp1 + w] = bias[i];
+  // int start = gid * (512 * 224 * 224/ tnum);
+  int start = gid / (224*224);
+  int end = start + 1;
+  int start_h = lid / 224;
+  int end_h = start_h + 1;
+  int start_w = lid - start_h * 224;
+  int end_w = start_w + 1;
+  for (int i = start; i < end; i++) {
+    for (int h = start_h; h < end_h; h++) {
+      for (int w = start_w; w < end_w; w++) {
+        Cout[i * (224 * 224) + h * 224 + w] = bias[i];
+      }
+    }
   }
-
-  // for (int i = start; i < end; i++) {
-  //   for (int j = 0; j < 512; j++) {
-  //     for (int h = 0; h < 224; h++) {
-  //       for (int w = 0; w < 224; w++) {
-  //         for (int p = 0; p < 3; p++) {
-  //           for (int q = 0; q < 3; q++) {
-  //             Cout[i * (224 * 224) + h * 224 + w] += weight[i * (512 * 
-  //               3 * 3) + j * (3 * 3) + p * 3 + q] * Cin[j * (226 * 
-  //               226) + (h + p) * 226 + (w + q)];
-  //           }
-  //         }
-  //       }
-  //     }
-  //   }
+  // int i = gid/224;
+  // int h = lid;
+  // int tmp1 = i * (224 * 224) + h * 224;    
+  // for (int w = 0; w < 224; w++) {
+  //     Cout[tmp1 + w] = bias[i];
   // }
 
-  int cout_i = i * (224 * 224);
-  int weight_i = i * (512 * 3 * 3);
   barrier(CLK_GLOBAL_MEM_FENCE);
-  for (int j = lid; j < 512; j+=16) {
-    int cin_j = j * (226 * 226);
-    for (int h = 0; h < 224; h++) {
-      int cout_h = h * 224;
-      for (int w = 0; w < 224; w++) {
-        for (int p = 0; p < 3; p++) {
-          for (int q = 0; q < 3; q++) {
-            Cout[cout_i + cout_h + w] += weight[weight_i + 
-              j * (3 * 3) + p * 3 + q] * Cin[cin_j + 
-              (h + p) * 226 + (w + q)];
+  for (int i = start; i < end; i++) {
+    for (int j = 0; j < 512; j++) {
+      for (int h = start_h; h < end_h; h++) {
+        for (int w = start_w; w < end_w; w++) {
+          for (int p = 0; p < 3; p++) {
+            for (int q = 0; q < 3; q++) {
+              Cout[i * (224 * 224) + h * 224 + w] += weight[i * (512 * 
+                3 * 3) + j * (3 * 3) + p * 3 + q] * Cin[j * (226 * 
+                226) + (h + p) * 226 + (w + q)];
+            }
           }
         }
       }
     }
   }
+  // barrier(CLK_GLOBAL_MEM_FENCE);
+  // int cout_i = i * (224 * 224);
+  // int weight_i = i * (512 * 3 * 3);
+  
+  // for (int j = 0; j < 512; j++) {
+  //   int cin_j = j * (226 * 226);
+  //   for (int h = 0; h < 224; h++) {
+  //     int cout_h = h * 224;
+  //     for (int w = 0; w < 224; w++) {
+  //       for (int p = 0; p < 3; p++) {
+  //         for (int q = 0; q < 3; q++) {
+  //           Cout[cout_i + cout_h + w] += weight[weight_i + 
+  //             j * (3 * 3) + p * 3 + q] * Cin[cin_j + 
+  //             (h + p) * 226 + (w + q)];
+  //         }
+  //       }
+  //     }
+  //   }
+  // }
+  // barrier(CLK_GLOBAL_MEM_FENCE);
 }
