@@ -201,9 +201,9 @@ void parallel_CONV(float Cout[NUM][IMROW][IMROW], float Cin[NUM][INIMROW][INIMRO
     // localWorkSize[0] = 224*224;
 
     // There are 32 * 512 work-items
-    globalWorkSize[0] = 512*224;
+    globalWorkSize[0] = 512*224*32;
     // There are work-groups
-    localWorkSize[0] = 224;
+    localWorkSize[0] = 224*32;
 
     // Execute the kernel for execution
     status = clEnqueueNDRangeKernel(cmdQueue, kernel, 1, NULL, 
